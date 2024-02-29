@@ -19,12 +19,16 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "angel_can.h"
+
+#include "spi.h"
 #include "tim.h"
 #include "gpio.h"
-#include "faults.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <cmath>
 #include "clock.h"
+#include "led.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +49,12 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static uint8_t buffer[10];
+volatile float displacement = 0;
+float max = 0.22;
+bool isHigh = false;
+float turns = 0;
+float thresh = 0.3;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -89,20 +98,71 @@ int main(void)
   MX_GPIO_Init();
   MX_CAN1_Init();
   MX_TIM2_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   clock_init();
-  /* USER CODE END 2 */
+  led_init();
+    can_init(&hcan1);
+
+
+  HAL_Delay(100);
+
+
+//    HAL_GPIO_WritePin()
+
+    /*Can Stuff*/
+    CanOutbox out;
+    can_addOutbox(UNSFR_VCU_DISP, 0.003f,&out);
+
+    /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    buffer[0] = 0x3E; // single measurement cmd + zyx bits
+    HAL_GPIO_WritePin(SPI_CS_WS1_GPIO_Port, SPI_CS_WS1_Pin, GPIO_PIN_RESET);
+    HAL_SPI_Transmit(&hspi1, buffer, 1, 1000);
+    HAL_SPI_Receive(&hspi1, buffer,1 , 1000);
+    HAL_GPIO_WritePin(SPI_CS_WS1_GPIO_Port, SPI_CS_WS1_Pin, GPIO_PIN_SET);
+
+    buffer[0] = 0x4E; // read command to get data from single measurement for ZYX only
+    HAL_GPIO_WritePin(SPI_CS_WS1_GPIO_Port, SPI_CS_WS1_Pin, GPIO_PIN_RESET);
+    HAL_SPI_Transmit(&hspi1, buffer, 1, 1000);
+    HAL_SPI_Receive(&hspi1, buffer,8 , 1000);
+    HAL_GPIO_WritePin(SPI_CS_WS1_GPIO_Port, SPI_CS_WS1_Pin, GPIO_PIN_SET);
+
+    int16_t status = (buffer[0]);
+    int16_t fieldX = (buffer[1] << 8) | (buffer[2]);
+    int16_t fieldY = (buffer[3] << 8) | (buffer[4]);
+    int16_t fieldZ = (buffer[5] << 8) | (buffer[6]);
+    int16_t crc = buffer[7];
+    float f = 0.00714f * 0.01f;
+    float r = abs(fieldX) * f;
+    float b = abs(fieldY) * f;
+    float g = abs(fieldZ) * f;
+    led_set(0, g, 0);
+//    displacement =  f*fieldZ;
+    if(!isHigh && f*fieldZ> thresh){
+        isHigh = true;
+    }else if(isHigh && f*fieldZ< -1*thresh){
+        isHigh = false;
+        displacement += (2*M_PI)/3;
+        turns = displacement/(M_PI*2);
+    }
+      can_writeFloat(uint32_t, &out, 0, displacement, 0.001f);
+
     float deltaTime = clock_getDeltaTime();
-    led_rainbow(deltaTime);
+      can_periodic(deltaTime);
+//    led_rainbow(deltaTime);
   }
+
+
   /* USER CODE END 3 */
 }
 
