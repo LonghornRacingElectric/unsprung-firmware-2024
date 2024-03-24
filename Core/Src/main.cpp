@@ -139,10 +139,10 @@ int main(void)
     if(r < cutoff) r = 0;
     if(g < cutoff) g = 0;
     if(b < cutoff) b = 0;
-    led_set(r, g, b);
+//    led_set(r, g, b);
 
-//    float deltaTime = clock_getDeltaTime();
-//    led_rainbow(deltaTime);
+    float deltaTime = clock_getDeltaTime();
+    led_rainbow(deltaTime);
   }
 
 
